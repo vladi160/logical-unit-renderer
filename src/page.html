@@ -1,0 +1,311 @@
+<title>Logical Unit Renderer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Onest:wght@400;500;600;700&family=Unbounded:wght@600&display=swap">
+<style>
+  /* Layout: an instrument bench. The live scene is the specimen; readouts and the
+     vector graph sit beside it like the side panel of a scope. */
+  :root {
+    --paper: #ECEFF4;
+    --panel: #FFFFFF;
+    --ink: #131820;
+    --muted: #556072;
+    --rule: #D0D7E1;
+    --chip: #E3E8EF;
+    --signal: #D2531F;
+    --l3: #7253CC;
+    --l2: #2A5FBE;
+    --l1: #13867A;
+    --l0: #D2531F;
+    --good: #1C7F4E;
+    --mid: #9A6A00;
+    --none: #6A7385;
+    --font-display: "Unbounded", "Onest", system-ui, sans-serif;
+    --font-body: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0D1016; --panel: #151A22; --ink: #E4E8EE; --muted: #97A1B2; --rule: #28303B; --chip: #1D2430;
+      --signal: #F0773F; --l3: #A58EF3; --l2: #719DF2; --l1: #3DC1AD; --l0: #F0773F;
+      --good: #4CC98A; --mid: #E2B04A; --none: #8F99AB;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0D1016; --panel: #151A22; --ink: #E4E8EE; --muted: #97A1B2; --rule: #28303B; --chip: #1D2430;
+    --signal: #F0773F; --l3: #A58EF3; --l2: #719DF2; --l1: #3DC1AD; --l0: #F0773F;
+    --good: #4CC98A; --mid: #E2B04A; --none: #8F99AB;
+    color-scheme: dark;
+  }
+
+  body { background: var(--paper); color: var(--ink); font: 400 15px/1.55 var(--font-body); }
+  .wrap {
+    max-width: 1240px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 56px;
+    display: grid; gap: 36px;
+  }
+  h1, h2 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .eyebrow { font: 500 11.5px/1.3 var(--font-data); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  /* masthead */
+  .masthead { display: grid; gap: 10px; max-width: 74ch; }
+  .masthead h1 { font: 600 clamp(26px, 4.2vw, 40px)/1.08 var(--font-display); letter-spacing: -0.01em; }
+  .masthead .lede { color: var(--muted); font-size: 16px; max-width: 68ch; }
+  .masthead .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* bench: scene + side panel */
+  .bench { display: grid; grid-template-columns: minmax(0, 1fr) 392px; gap: 20px; align-items: start; }
+  @media (max-width: 1020px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+  .stage-col, .side-col { display: grid; gap: 12px; min-width: 0; }
+  .stage { position: relative; border-radius: 10px; overflow: hidden; background: #0B0E13; aspect-ratio: 16 / 10; max-width: 100%; box-shadow: 0 1px 0 var(--rule), 0 10px 30px -18px rgba(10, 20, 40, 0.45); }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #scene { touch-action: none; }
+  #overlay { pointer-events: none; }
+
+  .trace {
+    min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+    font: 400 12.5px/1.5 var(--font-data); color: var(--ink);
+    padding: 8px 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel);
+  }
+  .tr-hint { color: var(--muted); font-family: var(--font-body); font-size: 13.5px; }
+  .tr-unit { font-weight: 500; }
+  .tr-arrow { color: var(--muted); }
+  .tr-lv { font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 4px; color: var(--panel); background: var(--lc); }
+  .tr-names em { font-style: normal; color: var(--muted); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .seg button {
+    font: 500 13px/1 var(--font-body); color: var(--ink); background: transparent; border: 0;
+    padding: 9px 12px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .tog, .sel { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; }
+  .tog input { width: 16px; height: 16px; accent-color: var(--signal); margin: 0; }
+  .sel select { font: 500 13px var(--font-data); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--l2); outline-offset: 2px; }
+  .keys { font-size: 12.5px; color: var(--muted); }
+  .keys kbd { font: 500 11px var(--font-data); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel); color: var(--ink); }
+
+  .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ro { display: grid; gap: 2px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; min-width: 0; }
+  .ro .k { font: 500 10.5px/1.3 var(--font-data); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+  .ro .v { font: 500 22px/1.25 var(--font-data); font-variant-numeric: tabular-nums; }
+  .ro .s { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ro.units .v { color: var(--signal); }
+  .spark { display: grid; gap: 4px; padding: 10px 12px 8px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+  .spark canvas { width: 100%; height: 44px; display: block; }
+  .spark span { font-size: 12px; color: var(--muted); }
+
+  .graph { margin: 0; padding: 10px 12px 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; display: grid; gap: 8px; }
+  .graph figcaption { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .graph figcaption b { font-weight: 600; font-size: 14px; }
+  .legend { display: inline-flex; gap: 12px; font-size: 11.5px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+  .legend .hot i { background: var(--ink); }
+  .legend .cut i { border: 1px dashed var(--ink); }
+  #graph { width: 100%; height: auto; display: block; overflow: visible; }
+  .gh { font: 500 10px var(--font-data); letter-spacing: 0.06em; text-transform: uppercase; fill: var(--lc); }
+  .gr { font: 400 9.5px var(--font-data); fill: var(--muted); }
+  .gn rect { fill: var(--panel); stroke: var(--rule); stroke-width: 1; transition: fill 0.12s, stroke 0.12s; }
+  .gn text { font: 500 10.5px var(--font-data); fill: var(--ink); pointer-events: none; }
+  .gn[data-s="hot"] rect { fill: var(--lc); stroke: var(--lc); }
+  .gn[data-s="hot"] text { fill: var(--panel); }
+  .gn[data-s="cut"] rect { fill: color-mix(in srgb, var(--lc) 12%, var(--panel)); stroke: var(--lc); stroke-dasharray: 3 2; }
+  .gn.traced rect { stroke: var(--ink); stroke-width: 2; }
+  .ge { fill: none; stroke: var(--rule); stroke-width: 1; transition: stroke 0.12s; }
+  .ge.back { stroke-dasharray: 2 3; }
+  .ge.hot { stroke: var(--lc); stroke-width: 1.6; }
+  .ge.ret { stroke: var(--l0); stroke-dasharray: 4 3; opacity: 0.75; }
+
+  /* reading sections */
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px 40px; }
+  @media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+  section > header { display: grid; gap: 6px; margin-bottom: 14px; }
+  h2 { font: 600 19px/1.25 var(--font-body); letter-spacing: -0.005em; }
+  .sub { color: var(--muted); font-size: 14px; max-width: 70ch; }
+  .try { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .try li { padding-left: 14px; border-left: 2px solid var(--rule); max-width: 66ch; }
+  .try b { font-weight: 600; }
+  .map-wrap, .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--rule); }
+  thead th { font: 500 10.5px/1.3 var(--font-data); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); border-bottom-color: var(--ink); }
+  .map td:first-child { white-space: nowrap; }
+  .map .bg { display: block; font-size: 12.5px; color: var(--muted); }
+  .map td:first-child b { font-weight: 600; }
+
+  .bench-table th[scope="row"] { font-weight: 500; }
+  .bench-table td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .bench-table thead th.num { text-align: right; }
+  .bench-table td.bars { width: 26%; min-width: 120px; vertical-align: middle; }
+  .bar { display: block; height: 6px; border-radius: 3px; }
+  .bar + .bar { margin-top: 3px; }
+  .bar.full { background: var(--muted); opacity: 0.45; }
+  .bar.inc { background: var(--signal); }
+  .pill { display: inline-block; font: 500 12.5px var(--font-data); padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .pill.good { color: var(--good); }
+  .pill.mid { color: var(--mid); }
+  .pill.none { color: var(--none); }
+  @media (max-width: 640px) {
+    .bench-table .bars, .bench-table thead th.bars-h { display: none; }
+    .bench-table th, .bench-table td { padding: 8px 6px; }
+  }
+  .bench-foot { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 12px; }
+  .bench-foot p { font-size: 13px; color: var(--muted); max-width: 70ch; }
+  .run {
+    font: 600 13.5px/1 var(--font-body); color: var(--panel); background: var(--ink); border: 0; border-radius: 8px;
+    padding: 10px 14px; cursor: pointer;
+  }
+  .run:disabled { opacity: 0.6; cursor: progress; }
+  .legend-inline { display: inline-flex; gap: 14px; font-size: 12.5px; color: var(--muted); }
+  .legend-inline i { display: inline-block; width: 14px; height: 6px; border-radius: 3px; vertical-align: 1px; margin-right: 5px; }
+
+  .verdict { display: grid; gap: 10px; align-content: start; }
+  .verdict ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; align-content: start; max-width: 66ch; }
+  .verdict h3 { margin: 0; font: 500 11.5px/1.3 var(--font-data); letter-spacing: 0.08em; text-transform: uppercase; }
+  .verdict.yes h3 { color: var(--good); }
+  .verdict.no h3 { color: var(--signal); }
+  code { font: 400 0.92em var(--font-data); background: var(--chip); padding: 1px 4px; border-radius: 4px; }
+  footer.src { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gn rect, .ge { transition: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Prototype · screen units with one vector each</p>
+    <h1>Logical Unit Renderer</h1>
+    <p class="lede">Every screen position is a unit that holds one color and <strong>one vector</strong>. Above the units sit pure functions in levels. A change flows down the graph and only the units it reaches are recomputed. The engine has no 3D in it: no xyz, no camera, no matrices, no physics.</p>
+  </header>
+
+  <section class="bench" aria-label="Live prototype">
+    <div class="stage-col">
+      <div class="stage">
+        <canvas id="scene" width="800" height="500" aria-label="Scene: an orange cube on a tiled floor under a light, with BOOM and JUMP buttons. Drag the cube to turn it, drag the light to move it."></canvas>
+        <canvas id="overlay" width="800" height="500" aria-hidden="true"></canvas>
+      </div>
+      <div class="trace" id="trace" aria-live="polite"></div>
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Redraw mode">
+          <button type="button" id="modeInc" data-mode="incremental" aria-pressed="true">Incremental</button>
+          <button type="button" id="modeFull" data-mode="full" aria-pressed="false">Full redraw</button>
+        </div>
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" id="viewImage" data-view="image" aria-pressed="true">Image</button>
+          <button type="button" id="viewVectors" data-view="vectors" aria-pressed="false">Vectors</button>
+          <button type="button" id="viewRecomputed" data-view="recomputed" aria-pressed="false">Recomputed</button>
+        </div>
+        <label class="tog"><input type="checkbox" id="optRotate" checked> Auto-rotate</label>
+        <label class="tog"><input type="checkbox" id="optAA" checked> Edge blending</label>
+        <label class="tog"><input type="checkbox" id="optTrace"> Tap to trace</label>
+        <label class="sel">Units
+          <select id="optRes">
+            <option value="480x300">480×300</option>
+            <option value="800x500">800×500</option>
+            <option value="1280x800">1280×800</option>
+            <option value="1920x1200">1920×1200</option>
+          </select>
+        </label>
+        <span class="keys"><kbd>B</kbd> boom · <kbd>J</kbd> jump</span>
+      </div>
+    </div>
+
+    <aside class="side-col" aria-label="Readouts">
+      <div class="readouts">
+        <div class="ro units"><span class="k">Units recomputed</span><span class="v" id="rUnits">0</span><span class="s" id="rUnitsSub">per frame</span></div>
+        <div class="ro"><span class="k">Nodes evaluated</span><span class="v" id="rNodes">0</span><span class="s" id="rNodesSub">per frame</span></div>
+        <div class="ro"><span class="k">Groups touched</span><span class="v" id="rTiles">0</span><span class="s" id="rTilesSub">per frame</span></div>
+        <div class="ro"><span class="k">Engine time</span><span class="v" id="rMs">0 ms</span><span class="s" id="rMsSub">per frame</span></div>
+      </div>
+      <div class="spark"><canvas id="spark" aria-label="Share of units recomputed per frame, last three seconds"></canvas><span>Share of units recomputed per frame, last 3 seconds (0 to 100%)</span></div>
+      <figure class="graph">
+        <figcaption><b>Vector graph</b><span class="legend"><span class="hot"><i></i>output changed</span><span class="cut"><i></i>ran, output same</span></span></figcaption>
+        <svg id="graph" role="img" aria-label="Nodes by level, lighting up as changes pass through them"></svg>
+      </figure>
+    </aside>
+  </section>
+
+  <section class="cols" aria-label="How to read the prototype">
+    <div>
+      <header><p class="eyebrow">Try</p><h2>What to do, and what to watch</h2></header>
+      <ul class="try">
+        <li><b>Drag the cube.</b> Only the groups around the cube recompute. The Shadow node runs and stops early, because a turning cube casts the same shadow.</li>
+        <li><b>Press JUMP.</b> Gravity is one rule writing one state. The shadow shrinks and softens by a rule. Nothing traces light.</li>
+        <li><b>Press BOOM.</b> The button sits bottom-left, and its vector chain ends at the cube. The 48 pieces and their shadows are regions of their own. Units between the button and the cube are never touched.</li>
+        <li><b>Drag the light sideways, then up and down.</b> Sideways, the Sky and Floor nodes run and stop early. Up and down changes their colors, so every unit recomputes and the incremental mode has nothing to skip.</li>
+        <li><b>Switch the view.</b> Vectors colors each unit by the region its one vector points at. Recomputed shows which units the last half second touched, over the 16×16 groups.</li>
+        <li><b>Turn off edge blending.</b> One vector per unit means one owner per unit. Without a connector that mixes two regions in one unit, edges turn jagged.</li>
+      </ul>
+    </div>
+    <div>
+      <header><p class="eyebrow">Mapping</p><h2>The idea, piece by piece</h2></header>
+      <div class="map-wrap">
+        <table class="map">
+          <thead><tr><th>From the discussion</th><th>In this prototype</th></tr></thead>
+          <tbody>
+            <tr><td><b>Unit</b><span class="bg">логическа пространствена единица, ниво 0</span></td><td>One color and one Int32 vector per screen position. 400,000 of them at 800×500.</td></tr>
+            <tr><td><b>Vector</b><span class="bg">вектор</span></td><td>A plain input/output link with no logic. A unit's vector points at the region that colors it, and a click travels back up the same link.</td></tr>
+            <tr><td><b>Node</b><span class="bg">нод, функция</span></td><td>A pure function from inputs to one output: Cube shape, Lighting, every region.</td></tr>
+            <tr><td><b>Connector</b><span class="bg">конектор</span></td><td>A node that combines inputs. Shadow multiplies the floor under it. Edge blending mixes two regions inside one unit.</td></tr>
+            <tr><td><b>Levels</b><span class="bg">нива</span></td><td>L0 units, L1 regions, L2 objects, L3 rules. A vector may skip a level.</td></tr>
+            <tr><td><b>Asymmetry</b><span class="bg">асиметрия</span></td><td>BOOM, bottom-left, reaches the cube on the right through Input, Explode, Cube and Debris.</td></tr>
+            <tr><td><b>Only what is affected</b><span class="bg">само засегнатото</span></td><td>Dirty marking, early cutoff when an output does not change, and damaged 16×16 groups.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section aria-label="Benchmark">
+    <header>
+      <p class="eyebrow">Measure · <span id="benchRes">800×500</span></p>
+      <h2>Incremental against full redraw, same engine</h2>
+      <p class="sub">Full redraw recomputes every unit every frame, the way a classic renderer redraws each frame. Both modes produce identical images. The difference is only what gets skipped.</p>
+    </header>
+    <div class="table-wrap">
+      <table class="bench-table">
+        <thead><tr><th>Scenario</th><th class="num">Units recomputed</th><th class="num">Incremental, ms</th><th class="num">Full, ms</th><th class="bars-h"><span class="legend-inline"><span><i style="background:var(--signal)"></i>incremental</span><span><i style="background:var(--muted);opacity:.45"></i>full</span></span></th><th class="num">Ratio</th></tr></thead>
+        <tbody id="benchBody"></tbody>
+      </table>
+    </div>
+    <div class="bench-foot">
+      <button type="button" class="run" id="benchRun">Run in this browser</button>
+      <p id="benchSource">Measured with Node 22 on the machine that built this page, 800×500, 60 frames per scenario, best of 5 runs, single thread. Running it here replaces these numbers with your own.</p>
+    </div>
+  </section>
+
+  <section class="cols" aria-label="What the prototype shows">
+    <div class="verdict yes">
+      <h3>What it shows</h3>
+      <ul>
+        <li>The model runs end to end: units with one vector, pure function nodes, connectors, levels, input going up and changes coming down.</li>
+        <li>Work follows the size of the change. When nothing changes, nothing runs.</li>
+        <li>Every unit can say why it has its color. Hover the scene to read the chain.</li>
+      </ul>
+    </div>
+    <div class="verdict no">
+      <h3>What it does not show</h3>
+      <ul>
+        <li>That shape information can disappear. <code>Cube shape</code> is four corners on an ellipse, which is an orthographic projection written in 2D. It works because the cube turns around one axis under a fixed view. A model that turns freely, like the soldier, needs its shape stored, computed or learned somewhere.</li>
+        <li>A win for global changes. A light that recolors the sky reaches every unit, and incremental is then no faster than full redraw.</li>
+        <li>GPU speed. This is single-threaded JavaScript, so read the ratio between the modes, not the milliseconds.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="src">Source: <code>core.js</code> holds the engine and knows nothing about cubes or light. <code>scene.js</code> builds the scene from regions, objects and rules. <code>app.js</code> runs this page.</footer>
+</div>
+
+<!--BENCH-->
+<script src="core.js"></script>
+<script src="scene.js"></script>
+<script src="app.js"></script>

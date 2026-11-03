@@ -1,0 +1,17 @@
+{
+  "name": "logical-unit-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prototype renderer: one vector per screen unit, pure function nodes in levels, incremental recompute of damaged groups.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node tools/test.js",
+    "bench": "node tools/bench.js 800x500 1920x1080",
+    "race": "node tools/race.js 800x500 1920x1080",
+    "build": "node tools/build.js",
+    "snapshots": "node tools/render.js dist/snapshots"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
